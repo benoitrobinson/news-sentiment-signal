@@ -32,6 +32,11 @@ def _stamp(t: datetime) -> str:
     return t.strftime("%Y%m%dT%H%M")
 
 
+def _halves(a: datetime, b: datetime) -> list[tuple[datetime, datetime]]:
+    middle = a + (b - a) / 2
+    return [(a, middle), (middle, b)]
+
+
 def collect_av_news(
     start: datetime,
     end: datetime,
@@ -42,7 +47,8 @@ def collect_av_news(
     window: timedelta = timedelta(days=1),
     pause_seconds: float = 0.0,
 ) -> int:
-    """Fetch [start, end) window by window; one checkpoint file per finished window.
+    """Fetch [start, end) window by window; one checkpoint file per finished window, and a .split
+    marker for a capped window so a resumed run goes straight to its halves.
     Returns the number of windows fetched in this run."""
     out_dir.mkdir(parents=True, exist_ok=True)
     pending, t = [], start
@@ -53,7 +59,11 @@ def collect_av_news(
     while pending:
         a, b = pending.pop(0)
         checkpoint = out_dir / f"{_stamp(a)}_{_stamp(b)}.json"
+        split_marker = checkpoint.with_suffix(".split")
         if checkpoint.exists():
+            continue
+        if split_marker.exists():
+            pending[:0] = _halves(a, b)
             continue
         params = {
             "function": "NEWS_SENTIMENT",
@@ -67,10 +77,12 @@ def collect_av_news(
         if "feed" not in reply:
             log.warning("no feed for %s-%s; reply keys %s", _stamp(a), _stamp(b), sorted(reply))
             raise RateLimited(f"stopped at window {_stamp(a)}-{_stamp(b)}")
-        if len(reply["feed"]) >= CAP and b - a > MIN_WINDOW:
-            middle = a + (b - a) / 2
-            pending[:0] = [(a, middle), (middle, b)]
-            continue
+        if len(reply["feed"]) >= CAP:
+            if b - a > MIN_WINDOW:
+                split_marker.touch()
+                pending[:0] = _halves(a, b)
+                continue
+            log.warning("window %s-%s still at the cap; later items are lost", _stamp(a), _stamp(b))
         checkpoint.write_text(json.dumps(reply["feed"]))
         fetched += 1
         if pause_seconds:
@@ -92,9 +104,12 @@ def load_av_news(out_dir: Path, min_relevance: float = config.AV_MIN_RELEVANCE) 
         .with_columns(
             ts=pl.col("time_published")
             .str.to_datetime("%Y%m%dT%H%M%S")
-            .dt.replace_time_zone(config.AV_ASSUMED_TZ)
+            # a repeated fall-back hour takes its later instant, so a headline can only move to a
+            # later session; a skipped spring-forward stamp cannot be local time and is dropped
+            .dt.replace_time_zone(config.AV_ASSUMED_TZ, ambiguous="latest", non_existent="null")
             .dt.convert_time_zone(config.TZ)
         )
+        .drop_nulls("ts")
         .select("ticker", "ts", "headline")
         .unique(subset=["ticker", "ts", "headline"], maintain_order=True)
     )
