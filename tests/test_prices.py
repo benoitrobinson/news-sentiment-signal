@@ -1,9 +1,15 @@
+import zipfile
 from datetime import date, timedelta
 
 import polars as pl
 import pytest
 
-from sentiment_signal.data.prices import build_returns, trading_calendar
+from sentiment_signal.data.prices import (
+    build_returns,
+    extract_prices,
+    load_prices,
+    trading_calendar,
+)
 
 DAYS = [date(2020, 1, 1) + timedelta(days=i) for i in range(25)]
 
@@ -56,3 +62,25 @@ def test_ticker_skipping_a_calendar_date_gets_null_return_and_is_not_eligible_af
     a = out.filter(pl.col("ticker") == "A").sort("date")
     assert a.filter(pl.col("date") == DAYS[21])["ret_next"].item() is None
     assert not a.filter(pl.col("date") == DAYS[23])["eligible"].item()
+
+
+# the real FNSPID zip uses both column orders: 5,705 files one way, 1,988 the other
+HEADERS = ("date,volume,open,high,low,close,adj close", "date,open,high,low,close,adj close,volume")
+
+
+def test_extract_and_load_both_fnspid_column_orders(tmp_path):
+    with zipfile.ZipFile(tmp_path / "prices.zip", "w") as z:
+        z.writestr(
+            "full_history/AAA.csv",
+            f"{HEADERS[0]}\n2020-01-02,1000,10,11,9,10.5,10.4\n2020-01-03,,10,11,9,10.6,10.5\n",
+        )
+        z.writestr("full_history/BBB.csv", f"{HEADERS[1]}\n2020-01-02,20,21,19,20.5,20.1,500\n")
+        z.writestr("__MACOSX/full_history/._AAA.csv", "resource fork junk")
+    assert extract_prices(tmp_path / "prices.zip", tmp_path / "csv") == 2
+    prices = load_prices(tmp_path / "csv").collect().sort("ticker", "date")
+    assert prices.columns == ["ticker", "date", "close", "adj_close", "volume"]
+    # AAA's blank-volume row is dropped; BBB's volume is read from its last column
+    assert prices.rows() == [
+        ("AAA", date(2020, 1, 2), 10.5, 10.4, 1000.0),
+        ("BBB", date(2020, 1, 2), 20.5, 20.1, 500.0),
+    ]

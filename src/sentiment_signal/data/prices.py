@@ -23,17 +23,19 @@ def extract_prices(zip_path: Path, out_dir: Path) -> int:
 
 
 def load_prices(csv_dir: Path) -> pl.LazyFrame:
-    return (
-        pl.scan_csv(csv_dir / "*.csv", include_file_paths="path", infer_schema=False)
-        .select(
-            pl.col("path").str.extract(r"([^/\\]+)\.csv$", 1).alias("ticker"),
+    """FNSPID files come in two column orders (volume second or last), so a single glob scan fails
+    with 'schema names differ'. Each file is scanned on its own and its columns selected by name."""
+    frames = [
+        pl.scan_csv(path, infer_schema=False).select(
+            pl.lit(path.stem).alias("ticker"),
             pl.col("date").str.to_date("%Y-%m-%d", strict=False),
             pl.col("close").cast(pl.Float64, strict=False),
             pl.col("adj close").cast(pl.Float64, strict=False).alias("adj_close"),
             pl.col("volume").cast(pl.Float64, strict=False),
         )
-        .drop_nulls()
-    )
+        for path in sorted(csv_dir.glob("*.csv"))
+    ]
+    return pl.concat(frames).drop_nulls()
 
 
 def trading_calendar(
