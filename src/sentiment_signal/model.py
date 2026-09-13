@@ -11,15 +11,15 @@ from sklearn.linear_model import LogisticRegression
 from sentiment_signal.evaluate import daily_ic, long_short
 from sentiment_signal.splits import YearSplit, select_years
 
-# (train_rows, [eval_rows, ...], params, test_year) -> (X_train, [X_eval, ...])
+# (train_rows, [eval_rows, ...], params, test_year) -> (X_train, [X_eval, ...]). Dense featurizers
+# must return fresh, writable arrays on every call: fit_predict standardises them in place.
 Featurize = Callable[[pl.DataFrame, list[pl.DataFrame], dict, int], tuple[Any, list[Any]]]
 
 
 @dataclass
 class WalkForward:
-    scores: (
-        pl.DataFrame
-    )  # ticker, signal_date, score, ret_next_excess, liquidity_tercile, test_year
+    # scores: ticker, signal_date, score, ret_next_excess, liquidity_tercile, test_year
+    scores: pl.DataFrame
     validation: pl.DataFrame  # test_year, config, mean_ic
     validation_returns: pl.DataFrame  # test_year, config, signal_date, net
 
