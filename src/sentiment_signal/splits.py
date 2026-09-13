@@ -30,6 +30,7 @@ def select_years(
     rows = panel.filter(pl.col("signal_date").dt.year().is_between(first, last))
     if not embargo:
         return rows
-    # the label of the block's last trading date is a return that ends in the next block
-    last_day = calendar.filter(calendar.dt.year() == last).max()
+    # the label of the block's last trading date is a return that ends in the next block; with no
+    # trading date in the block there are no rows, so there is nothing to embargo
+    last_day = calendar.filter(calendar.dt.year().is_between(first, last)).max()
     return rows if last_day is None else rows.filter(pl.col("signal_date") != last_day)
