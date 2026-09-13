@@ -11,6 +11,7 @@ from sentiment_signal.evaluate import (
     by_tercile,
     daily_ic,
     deflated_sharpe,
+    event_study,
     expected_max_sharpe,
     lag_ic,
     long_short,
@@ -101,6 +102,25 @@ def test_by_tercile_reports_each_tercile():
     rows = {r["tercile"]: r for r in by_tercile(pl.concat(frames), min_names=20)}
     assert rows[1]["mean_ic"] == pytest.approx(1.0)
     assert rows[2]["mean_ic"] == pytest.approx(-1.0)
+
+
+def test_event_study_cumulates_quintile_returns_from_day_minus_one():
+    cal = pl.Series("date", [D0, D1, date(2020, 1, 6)])
+    scores = _scores(D1, list(range(20)), [0.0] * 20)
+    returns = pl.DataFrame(
+        {
+            "ticker": [f"T{i}" for i in range(20)] * 3,
+            "date": [d for d in cal.to_list() for _ in range(20)],
+            "ret_next_excess": [0.001 * i for _ in range(3) for i in range(20)],
+            "eligible": [True] * 60,
+        }
+    )
+    es = event_study(scores, returns, cal, offsets=(-1, 0, 1), min_names=20)
+    top = es.filter(pl.col("q") == 5).sort("offset")
+    assert top["offset"].to_list() == [-1, 0, 1]
+    assert top["mean_r"].to_list() == pytest.approx([0.0175] * 3)  # tickers 16-19
+    assert top["cum_r"].to_list() == pytest.approx([0.0175, 0.035, 0.0525])
+    assert es.filter(pl.col("q") == 1)["mean_r"].to_list() == pytest.approx([0.0015] * 3)
 
 
 @pytest.mark.parametrize(
