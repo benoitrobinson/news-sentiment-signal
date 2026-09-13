@@ -34,6 +34,22 @@ def test_cutoff_boundaries_weekend_and_daylight_saving():
     ]
 
 
+def test_early_close_day_moves_the_cutoff_to_12_50():
+    # Fri 29 Nov 2019 closed at 13:00; a 14:00 headline must wait for Monday 2 Dec
+    cal = pl.Series("date", [date(2019, 11, 27), date(2019, 11, 29), date(2019, 12, 2)])
+    assert date(2019, 11, 29) in config.EARLY_CLOSE_DATES
+    ts = _ts(
+        datetime(2019, 11, 29, 12, 49, tzinfo=NY),
+        datetime(2019, 11, 29, 12, 50, tzinfo=NY),
+        datetime(2019, 11, 29, 14, 0, tzinfo=NY),
+    )
+    assert signal_date(ts, cal).to_list() == [
+        date(2019, 11, 29),
+        date(2019, 12, 2),
+        date(2019, 12, 2),
+    ]
+
+
 def test_date_missing_from_calendar_is_skipped():
     cal = pl.Series("date", [date(2019, 3, 7), date(2019, 3, 11)])  # 8 March absent
     ts = _ts(datetime(2019, 3, 7, 17, 0, tzinfo=NY))

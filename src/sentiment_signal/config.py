@@ -1,10 +1,51 @@
 """Every fixed number of the pre-registered protocol (spec sections 2, 4, 5, 6)."""
 
-from datetime import time
+from datetime import date, time
 from pathlib import Path
 
 TZ = "America/New_York"
 CUTOFF = time(15, 50)
+# NYSE 13:00 early closes, 2008-2023, generated from exchange_calendars 4.13.2 (XNYS schedule).
+# On these dates the market-on-close deadline moves with the close, so the cut-off is 12:50.
+EARLY_CUTOFF = time(12, 50)
+EARLY_CLOSE_DATES = tuple(
+    date.fromisoformat(d)
+    for d in (
+        "2008-07-03",
+        "2008-11-28",
+        "2008-12-24",
+        "2009-11-27",
+        "2009-12-24",
+        "2010-11-26",
+        "2011-11-25",
+        "2012-07-03",
+        "2012-11-23",
+        "2012-12-24",
+        "2013-07-03",
+        "2013-11-29",
+        "2013-12-24",
+        "2014-07-03",
+        "2014-11-28",
+        "2014-12-24",
+        "2015-11-27",
+        "2015-12-24",
+        "2016-11-25",
+        "2017-07-03",
+        "2017-11-24",
+        "2018-07-03",
+        "2018-11-23",
+        "2018-12-24",
+        "2019-07-03",
+        "2019-11-29",
+        "2019-12-24",
+        "2020-11-27",
+        "2020-12-24",
+        "2021-11-26",
+        "2022-11-25",
+        "2023-07-03",
+        "2023-11-24",
+    )
+)
 
 # Universe and calendar (spec section 2)
 CALENDAR_MIN_TICKERS = 500

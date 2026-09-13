@@ -1,6 +1,6 @@
 """Headline timestamps -> the first trading-day signal they could have been used for."""
 
-from datetime import time
+from datetime import date, time
 
 import polars as pl
 
@@ -18,12 +18,22 @@ PANEL_COLUMNS = [
 ]
 
 
-def signal_date(ts: pl.Series, calendar: pl.Series, cutoff: time = config.CUTOFF) -> pl.Series:
-    """First calendar date d with ts strictly before d at the cut-off, New York time."""
+def signal_date(
+    ts: pl.Series,
+    calendar: pl.Series,
+    cutoff: time = config.CUTOFF,
+    early_closes: tuple[date, ...] = config.EARLY_CLOSE_DATES,
+    early_cutoff: time = config.EARLY_CUTOFF,
+) -> pl.Series:
+    """First calendar date d with ts strictly before d's cut-off, New York time. The cut-off is
+    15:50, or 12:50 on NYSE early-close days: a headline after a 13:00 close waits a session."""
     cutoffs = (
         pl.DataFrame({"signal_date": calendar})
         .with_columns(
-            cutoff_ts=pl.col("signal_date").dt.combine(cutoff).dt.replace_time_zone(config.TZ)
+            cutoff_ts=pl.when(pl.col("signal_date").is_in(list(early_closes)))
+            .then(pl.col("signal_date").dt.combine(early_cutoff))
+            .otherwise(pl.col("signal_date").dt.combine(cutoff))
+            .dt.replace_time_zone(config.TZ)
         )
         .sort("cutoff_ts")
     )
