@@ -79,6 +79,8 @@ G2_MIN_HOLDOUT_DAYS = 100
 G4_MAX_EMBED_HOURS = 12.0
 G4_DISK_HEADROOM_GB = 5.0
 G4_BENCHMARK_HEADLINES = 10_000
+G4_MAX_RAM_FRACTION = 0.6  # of physical RAM, for the largest block's logistic fit
+G4_FIT_OVERHEAD_GB = 1.0  # interpreter, polars frames, chunked standardisation buffers
 
 # Kaggle file and columns: defaults from the dataset listing, confirmed or corrected at gate G1
 KAGGLE_DATASET = "miguelaenlle/massive-stock-news-analysis-db-for-nlpbacktests"
