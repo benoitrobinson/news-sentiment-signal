@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from sentiment_signal.evaluate import (
+    _quintiles,
     annualised_sharpe,
     by_tercile,
     daily_ic,
@@ -130,6 +131,7 @@ def test_event_study_cumulates_quintile_returns_from_day_minus_one():
         ((1.9, 0.8, 0.02, 0.005, 0.01), {"1_ic_t_ge_2"}),
         ((2.5, 0.4, 0.02, 0.005, 0.01), {"2_net_sharpe_ge_0_5"}),
         ((2.5, 0.8, 0.02, 0.015, 0.01), {"3_lag_ic_le_half"}),
+        ((2.5, 0.8, -0.02, -0.03, 0.01), {"3_lag_ic_le_half"}),  # lag <= half, but IC not positive
         ((2.5, 0.8, 0.02, 0.005, -0.001), {"4_holdout_ic_gt_0"}),
         ((2.5, 0.8, 0.02, 0.005, float("nan")), {"4_holdout_ic_gt_0"}),
     ],
@@ -138,3 +140,27 @@ def test_publish_bar(args, failing):
     bar = publish_bar(*args)
     assert {k for k, v in bar["conditions"].items() if not v["pass"]} == failing
     assert bar["publish"] is (not failing)
+
+
+def test_tied_scores_do_not_trade_a_fixed_alphabetical_basket():
+    rng = np.random.default_rng(0)
+    days = [date(2020, 1, 1) + timedelta(days=i) for i in range(60)]
+    tickers = [f"T{i:02d}" for i in range(40)]
+    tied = pl.DataFrame(
+        {
+            "ticker": tickers * len(days),
+            "signal_date": [d for d in days for _ in tickers],
+            "score": [0.0, 1.0] * (20 * len(days)),  # half the names tie at each of two values
+            "ret_next_excess": rng.normal(0, 0.01, 40 * len(days)),
+            "liquidity_tercile": pl.Series([1] * (40 * len(days)), dtype=pl.Int8),
+        }
+    )
+    longs = (
+        _quintiles(tied, min_names=20)
+        .filter(pl.col("q") == 5)
+        .group_by("signal_date")
+        .agg(pl.col("ticker").sort())
+    )
+    assert longs["ticker"].n_unique() > 50  # the long leg is drawn afresh among the ties each day
+    flat = tied.with_columns(score=pl.lit(0.5))
+    assert long_short(flat, min_names=20).height == 0  # no ranking at all: no trade, as no IC

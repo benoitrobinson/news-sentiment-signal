@@ -84,3 +84,19 @@ def test_extract_and_load_both_fnspid_column_orders(tmp_path):
         ("AAA", date(2020, 1, 2), 10.5, 10.4, 1000.0),
         ("BBB", date(2020, 1, 2), 20.5, 20.1, 500.0),
     ]
+
+
+def test_bad_ticks_leave_no_next_day_return():
+    adj, vol = [100.0] * 25, [1000.0] * 25
+    vol[5] = 0.0  # no trade: neither the return into day 5 nor out of it is real
+    adj[10] = 0.0  # a price that is not positive
+    adj[12] = adj[13] = -50.0  # negative on consecutive days: the ratio alone would look normal
+    adj[15] = 0.2  # a placeholder tick between normal days
+    adj[19] = 450.0  # beyond 4x up, then beyond 4x down
+    adj[22] = 390.0  # 3.9x up and back: large, but inside the band, so kept
+    prices = _prices([("A", d, 10.0, a, v) for d, a, v in zip(DAYS, adj, vol, strict=True)])
+    cal = trading_calendar(prices, min_tickers=1)
+    out = build_returns(prices, cal, universe_size=1, window=3, splice_dates=(DAYS[7],))
+    missing = {i for i, r in enumerate(out.sort("date")["ret_next"].to_list()) if r is None}
+    # day 7 is a price-vintage splice: its next-day return is dropped even though prices look fine
+    assert missing == {4, 5, 7, 9, 10, 11, 12, 13, 14, 15, 18, 19, 24}

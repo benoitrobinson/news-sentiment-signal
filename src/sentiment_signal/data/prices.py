@@ -1,6 +1,7 @@
 """FNSPID daily prices -> trading calendar and next-day excess returns on a liquid universe."""
 
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import polars as pl
@@ -57,8 +58,13 @@ def build_returns(
     min_price: float = config.MIN_PRICE,
     universe_size: int = config.UNIVERSE_SIZE,
     window: int = config.DOLLAR_VOLUME_WINDOW,
+    max_ratio: float = config.MAX_DAILY_PRICE_RATIO,
+    splice_dates: tuple[date, ...] = config.PRICE_SPLICE_DATES,
 ) -> pl.DataFrame:
-    """One row per ticker-date on the calendar. Eligibility on date d uses data through d-1 only."""
+    """One row per ticker-date on the calendar. Eligibility on date d uses data through d-1 only.
+    A next-day return needs a traded, positive price on both days and a price ratio within
+    [1/max_ratio, max_ratio], and no return is taken across a price-vintage splice date; anything
+    else leaves the stock-day ineligible."""
     cal = pl.DataFrame({"date": calendar}).with_columns(
         cal_prev=pl.col("date").shift(1), cal_next=pl.col("date").shift(-1)
     )
@@ -72,11 +78,18 @@ def build_returns(
             med_dollar_vol=pl.col("dollar_vol").rolling_median(window).shift(1).over("ticker"),
             next_date=pl.col("date").shift(-1).over("ticker"),
             next_adj=pl.col("adj_close").shift(-1).over("ticker"),
+            next_volume=pl.col("volume").shift(-1).over("ticker"),
         )
         .with_columns(
-            ret_next=pl.when(pl.col("next_date") == pl.col("cal_next")).then(
-                pl.col("next_adj") / pl.col("adj_close") - 1.0
-            ),
+            ret_next=pl.when(
+                (pl.col("next_date") == pl.col("cal_next"))
+                & ~pl.col("date").is_in(list(splice_dates))
+                & (pl.col("volume") > 0)
+                & (pl.col("next_volume") > 0)
+                & (pl.col("adj_close") > 0)
+                & (pl.col("next_adj") > 0)
+                & (pl.col("next_adj") / pl.col("adj_close")).is_between(1 / max_ratio, max_ratio)
+            ).then(pl.col("next_adj") / pl.col("adj_close") - 1.0),
             base_ok=(
                 (pl.col("prev_date") == pl.col("cal_prev"))
                 & (pl.col("prev_close") >= min_price)

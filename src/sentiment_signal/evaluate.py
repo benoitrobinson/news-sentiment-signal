@@ -35,15 +35,23 @@ def newey_west_t(x: Sequence[float] | np.ndarray, lags: int = config.NW_LAGS) ->
 
 
 def _quintiles(scores: pl.DataFrame, min_names: int) -> pl.DataFrame:
+    """Ordinal rank r of n each day, quintile ceil(5r/n). Tied scores are ordered by a hash of
+    ticker and date, not by ticker, so ties cannot hold the same alphabetical basket every day; a
+    day whose scores are all equal has no ranking and is skipped, as daily_ic skips it."""
     return (
         scores.drop_nulls(["score", "ret_next_excess"])
-        .with_columns(n=pl.len().over("signal_date"))
-        .filter(pl.col("n") >= min_names)
         .with_columns(
-            q=(5 * pl.col("score").rank(method="ordinal").over("signal_date") / pl.col("n"))
+            n=pl.len().over("signal_date"),
+            tie=pl.concat_str("ticker", pl.col("signal_date").cast(pl.String)).hash(seed=0),
+        )
+        .filter((pl.col("n") >= min_names) & (pl.col("score").n_unique().over("signal_date") > 1))
+        .sort("signal_date", "score", "tie")
+        .with_columns(
+            q=(5 * pl.int_range(1, pl.len() + 1).over("signal_date") / pl.col("n"))
             .ceil()
             .cast(pl.Int8)
         )
+        .drop("tie")
     )
 
 

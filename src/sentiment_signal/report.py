@@ -17,6 +17,8 @@ LIMITATIONS = [
     "Validation year Y-1 text was inside the ChronoBERT version used for test year Y, so config "
     "selection is mildly optimistic; test-year scores are lookahead-free.",
     "If Alpha Vantage's timezone is undocumented, New York wall time is assumed (conservative).",
+    "FNSPID price errors: zero-volume days and one-day adjusted moves beyond 4x either way give no "
+    "return, and no return is taken across the 2014-12-31 and 2020-07-02 price-vintage joins.",
 ]
 
 

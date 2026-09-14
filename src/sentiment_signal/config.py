@@ -52,6 +52,13 @@ CALENDAR_MIN_TICKERS = 500
 MIN_PRICE = 5.0
 UNIVERSE_SIZE = 1000
 DOLLAR_VOLUME_WINDOW = 21
+# a one-day adjusted-close ratio beyond 4x either way is a bad tick, not a return: FNSPID mixes
+# series and carries placeholder prices (final review, real-data probe)
+MAX_DAILY_PRICE_RATIO = 4.0
+# FNSPID joins price vintages here: returns across these dates mix split adjustments (2020-07-02:
+# AAPL 364 -> 93). The only dates, 1982-2023, where 2+ eligible names move by a split ratio
+# (within 2% of 2, 3, 4, 5, 7, 10 or their inverses)
+PRICE_SPLICE_DATES = (date(2014, 12, 31), date(2020, 7, 2))
 
 # Splits and model (spec section 4)
 TEST_YEARS = tuple(range(2013, 2021))
