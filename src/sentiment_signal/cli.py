@@ -47,7 +47,9 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text()) if path.exists() else {}
 
 
-def _record_gate(name: str, result: dict) -> None:
+def _require_gates_open() -> None:
+    """Called before a gate does any work, so a refused gate spends no requests and overwrites no
+    file that a later step reads."""
     seen = sorted(
         p.name for p in config.RESULTS.glob("*.json") if p.stem not in {"gates", "deviations"}
     )
@@ -56,6 +58,10 @@ def _record_gate(name: str, result: dict) -> None:
             f"results exist ({', '.join(seen)}): gates are frozen once any result is seen "
             "(spec section 6); record a deviation instead"
         )
+
+
+def _record_gate(name: str, result: dict) -> None:
+    _require_gates_open()
     gates = _read_json(config.RESULTS / "gates.json")
     gates[name] = {**result, "recorded_at": datetime.now(UTC).isoformat(timespec="seconds")}
     _write_json(config.RESULTS / "gates.json", gates)
@@ -116,13 +122,15 @@ def offsets_follow_dst(stamps: pl.Series) -> tuple[bool, float]:
         .dt.replace_time_zone(None),
         written=pl.col("s").str.slice(0, 19).str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False),
     )
-    frame = frame.drop_nulls()
-    agreement = float((frame["wall"] == frame["written"]).mean()) if frame.height else 0.0
+    # over every stamp: an unparseable or offset-less stamp counts against the share
+    agreement = frame.select((pl.col("wall") == pl.col("written")).fill_null(False).mean()).item()
+    agreement = float(agreement) if agreement is not None else 0.0
     all_utc = bool(offsets) and offsets <= {"+00:00", "+0000", "Z"}
     return all_utc or agreement >= config.G1_MIN_DST_AGREEMENT, agreement
 
 
 def cmd_gate_g1(args: argparse.Namespace) -> None:
+    _require_gates_open()
     path = _kaggle_path(args.file)
     print(pl.read_csv(path, n_rows=3, infer_schema=False))
     share = midnight_share(path, config.KAGGLE_TS_COL)
@@ -231,6 +239,7 @@ def g4_projection(
 
 
 def cmd_gate_g4(args: argparse.Namespace) -> None:
+    _require_gates_open()
     panel = pl.read_parquet(config.PROCESSED / "panel.parquet")
     year_headlines = (
         panel.filter(pl.col("signal_date").dt.year() == max(config.TEST_YEARS))["headline"]
@@ -269,18 +278,17 @@ def _av_span() -> tuple[datetime, datetime]:
 
 
 def probe_days(start: date, end: date, n: int) -> list[date]:
-    """n weekdays spread evenly over [start, end). News volume peaks on weekdays, so projecting
-    weekday request counts onto every calendar day is conservative."""
-    days = []
-    for i in range(n):
-        d = start + timedelta(days=i * (end - start).days // n)
-        while d.weekday() >= 5:
-            d += timedelta(days=1)
-        days.append(d)
-    return days
+    """n distinct weekdays spread evenly over [start, end], both ends included. News volume peaks
+    on weekdays, so projecting weekday request counts onto every calendar day is conservative."""
+    span = (start + timedelta(days=k) for k in range((end - start).days + 1))
+    weekdays = [d for d in span if d.weekday() < 5]
+    if not 2 <= n <= len(weekdays):
+        raise SystemExit(f"--days must be between 2 and {len(weekdays)}")
+    return [weekdays[round(i * (len(weekdays) - 1) / (n - 1))] for i in range(n)]
 
 
 def cmd_gate_g2(args: argparse.Namespace) -> None:
+    _require_gates_open()
     key = os.environ["ALPHA_VANTAGE_KEY"]
     first, last = (date.fromisoformat(s) for s in (config.HOLDOUT_START, config.HOLDOUT_END))
     start, end = _av_span()
@@ -325,6 +333,7 @@ def cmd_collect_av(args: argparse.Namespace) -> None:
 
 
 def cmd_holdout_panel(args: argparse.Namespace) -> None:
+    _require_gates_open()
     news = load_av_news(config.RAW / "av")
     returns = pl.read_parquet(config.PROCESSED / "returns.parquet")
     panel = build_panel(news, returns, _calendar()).filter(
@@ -411,16 +420,17 @@ def cmd_vader(args: argparse.Namespace) -> None:
 
 
 def _best_config(model: str) -> dict:
-    """Highest validation IC averaged over every walk-forward validation year; ties go to the
-    earlier config, as in walk_forward."""
+    """Highest validation IC averaged over the walk-forward validation years; like walk_forward, a
+    year where a config has no finite IC is skipped for that config, and ties go to the earlier
+    config."""
     run = _read_json(config.RESULTS / f"{model}.json")
     if "validation" not in run:
         raise SystemExit(f"run `ss run --model {model}` first")
     ranked = (
         pl.DataFrame(run["validation"])
+        .filter(pl.col("mean_ic").is_finite())
         .group_by("config")
         .agg(pl.col("mean_ic").mean())
-        .filter(pl.col("mean_ic").is_finite())
         .sort(["mean_ic", "config"], descending=[True, False])
     )
     if ranked.is_empty():
@@ -430,6 +440,7 @@ def _best_config(model: str) -> dict:
 
 def cmd_holdout(args: argparse.Namespace) -> None:
     model, calendar = _primary(), _calendar()
+    _require_clean_null(model)  # the holdout is scored once, and never before the leak rule
     params = _best_config(model)
     first, last = config.HOLDOUT_TRAIN_YEARS
     train = select_years(

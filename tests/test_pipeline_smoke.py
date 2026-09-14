@@ -91,12 +91,19 @@ def test_full_pipeline_runs_and_writes_a_report(workspace, monkeypatch):
     _cli(monkeypatch, "run", "--model", "tfidf", "--null")
     with pytest.raises(SystemExit, match="gates are frozen"):
         _cli(monkeypatch, "gate-g1", "--file", news, "--licence", "CC0", "--licence-ok")
+    holdout_panel = workspace / "data/processed/panel_holdout.parquet"
+    written = holdout_panel.stat().st_mtime_ns
+    with pytest.raises(SystemExit, match="gates are frozen"):
+        _cli(monkeypatch, "holdout-panel")
+    assert holdout_panel.stat().st_mtime_ns == written  # refused before rewriting its file
     # one informative word makes any fitted coefficient rank perfectly in one direction, so this
     # synthetic null is far from |t| < 2, and the pipeline must stop there
     with pytest.raises(SystemExit, match="leaks"):
         _cli(monkeypatch, "summarize")
     with pytest.raises(SystemExit, match="leaks"):
         _cli(monkeypatch, "report")
+    with pytest.raises(SystemExit, match="leaks"):
+        _cli(monkeypatch, "holdout")
     null_path = workspace / "results/tfidf_null.json"
     null = json.loads(null_path.read_text())
     assert abs(null["overall"]["ic_t"]) >= 2
@@ -105,6 +112,8 @@ def test_full_pipeline_runs_and_writes_a_report(workspace, monkeypatch):
     _cli(monkeypatch, "vader")
     with pytest.raises(SystemExit, match="holdout"):
         _cli(monkeypatch, "summarize")
+    with pytest.raises(SystemExit, match="summarize"):
+        _cli(monkeypatch, "report")
     _cli(monkeypatch, "holdout")
     holdout_path = workspace / "results/holdout.json"
     holdout_path.write_text(holdout_path.read_text().replace('"tfidf"', '"chrono"'))
@@ -121,6 +130,8 @@ def test_full_pipeline_runs_and_writes_a_report(workspace, monkeypatch):
     bar = summary["bar"]["conditions"]
     assert bar["1_ic_t_ge_2"]["value"] == tfidf["ic_t"]
     assert bar["2_net_sharpe_ge_0_5"]["value"] == tfidf["net_sharpe"]
+    lag = summary["mean_lag_ic"]
+    assert bar["3_lag_ic_le_half"] == {"value": lag, "pass": lag <= 0.5 * tfidf["mean_ic"]}
     assert bar["4_holdout_ic_gt_0"]["value"] == holdout["mean_ic"] > 0.5
     report = (workspace / "REPORT.md").read_text()
     assert report.count("| tfidf |") == 1 and "| tfidf_null |" in report
@@ -144,9 +155,19 @@ def test_report_shows_the_original_protocol_bar_when_deviations_exist(tmp_path):
     assert "original protocol: **does not clear**" in (tmp_path / "REPORT.md").read_text()
 
 
-def test_holdout_config_skips_nan_validation_ic_and_breaks_ties_early(tmp_path, monkeypatch):
+def test_holdout_config_skips_nan_years_and_breaks_ties_early(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RESULTS", tmp_path)
-    ics = [0.01, float("nan"), 0.03, 0.03]
-    validation = [{"test_year": 2013, "config": i, "mean_ic": ic} for i, ic in enumerate(ics)]
-    (tmp_path / "tfidf.json").write_text(json.dumps({"validation": validation}))
-    assert cli._best_config("tfidf") == config.TFIDF_GRID[2]
+
+    def best(ics_by_config: list[list[float]]) -> dict:
+        validation = [
+            {"test_year": 2013 + year, "config": c, "mean_ic": ic}
+            for c, ics in enumerate(ics_by_config)
+            for year, ic in enumerate(ics)
+        ]
+        (tmp_path / "tfidf.json").write_text(json.dumps({"validation": validation}))
+        return cli._best_config("tfidf")
+
+    nan = float("nan")
+    # a config's NaN year is skipped for that config, as walk_forward skips it
+    assert best([[0.05, nan], [nan, nan], [0.03, 0.03]]) == config.TFIDF_GRID[0]
+    assert best([[0.01, 0.01], [nan, nan], [0.03, 0.03], [0.03, 0.03]]) == config.TFIDF_GRID[2]

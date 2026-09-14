@@ -114,7 +114,8 @@ def build_report(results: Path, out_md: Path) -> None:
             _bar("Publish bar under the original protocol", original)
             if original
             else [
-                "Publish bar under the original protocol: not available (no summary was produced)."
+                "Publish bar under the original protocol: not available (no "
+                "`results/summary_original.json`; a change made before any scoring has none)."
             ]
         )
     lines += ["", "## Limitations", ""] + [f"- {item}" for item in LIMITATIONS] + [""]

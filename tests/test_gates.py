@@ -1,9 +1,17 @@
+import json
 from datetime import date
 
 import polars as pl
+import pytest
 
 from sentiment_signal import config
-from sentiment_signal.cli import _years_needed, g4_projection, offsets_follow_dst, probe_days
+from sentiment_signal.cli import (
+    _primary,
+    _years_needed,
+    g4_projection,
+    offsets_follow_dst,
+    probe_days,
+)
 
 
 def _counts(value: int) -> dict[int, int]:
@@ -38,9 +46,32 @@ def test_g1_offsets_must_follow_new_york_daylight_saving_or_be_utc():
     assert follows("2020-01-15 15:00:00+00:00", "2020-07-15 14:00:00+00:00")
     assert not follows("2020-01-15 10:00:00-04:00", "2020-07-15 10:00:00-04:00")  # fixed offset
     assert not follows("2020-01-15 10:00:00-04:00", "2020-07-15 10:00:00-05:00")  # flipped
+    assert not follows("2020-01-15 10:00:00", "2020-07-15 10:00:00")  # no offsets at all
+    assert not follows("2020-01-15 10:00:00-05:00", "2020-07-15 10:00:00")  # half without one
 
 
-def test_g2_probe_days_are_weekdays_spread_over_the_whole_holdout():
+def test_g2_probe_days_are_distinct_weekdays_spanning_the_whole_holdout():
     days = probe_days(date(2022, 1, 1), date(2023, 12, 28), 6)
     assert len(set(days)) == 6 and all(d.weekday() < 5 for d in days)
-    assert {d.year for d in days} == {2022, 2023}
+    assert days[0] == date(2022, 1, 3) and days[-1] == date(2023, 12, 28)
+    assert {d.year for d in probe_days(date(2022, 1, 1), date(2023, 12, 28), 2)} == {2022, 2023}
+    assert len(set(probe_days(date(2022, 1, 3), date(2022, 1, 7), 5))) == 5
+
+
+def test_modelling_waits_until_every_gate_is_recorded_and_g1_g2_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RESULTS", tmp_path)
+    gates = {"G1": {"pass": True}, "G2ab": {"pass": True}, "G2c": {"pass": True}}
+    gates["G4"] = {"pass": False}
+
+    def primary_with(recorded: dict) -> str:
+        (tmp_path / "gates.json").write_text(json.dumps(recorded))
+        return _primary()
+
+    for gate in gates:
+        with pytest.raises(SystemExit, match="not recorded"):
+            primary_with({g: v for g, v in gates.items() if g != gate})
+    for gate in ("G1", "G2ab", "G2c"):
+        with pytest.raises(SystemExit, match="failed"):
+            primary_with({**gates, gate: {"pass": False}})
+    assert primary_with(gates) == "tfidf"
+    assert primary_with({**gates, "G4": {"pass": True}}) == "chrono"
