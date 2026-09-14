@@ -71,9 +71,11 @@ MIN_NAMES_PER_DAY = 20
 COST_PER_UNIT_TURNOVER = 0.0010
 NW_LAGS = 5
 TRADING_DAYS = 252
+NULL_MAX_ABS_T = 2.0  # a null run at or above this |IC t| means the pipeline leaks
 
 # Gates (spec section 6)
 G1_MAX_MIDNIGHT_SHARE = 0.05
+G1_MIN_DST_AGREEMENT = 0.99  # share of stamps written in New York wall time
 G2_MAX_COLLECTION_DAYS = 7
 G2_MIN_HOLDOUT_DAYS = 100
 G4_MAX_EMBED_HOURS = 12.0

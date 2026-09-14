@@ -36,6 +36,12 @@ def _table(header: list[str], rows: list[list[object]]) -> list[str]:
     return lines + ["| " + " | ".join(_fmt(c) for c in row) + " |" for row in rows]
 
 
+def _bar(label: str, bar: dict) -> list[str]:
+    verdict = "clears" if bar.get("publish") else "does not clear"
+    rows = [[k, v["value"], v["pass"]] for k, v in bar.get("conditions", {}).items()]
+    return [f"{label}: **{verdict}**.", ""] + _table(["Condition", "Value", "Pass"], rows)
+
+
 def _plot_event_study(rows: list[dict], out: Path) -> None:
     fig, ax = plt.subplots(figsize=(6, 3.5))
     for q in sorted({r["q"] for r in rows}):
@@ -55,18 +61,12 @@ def build_report(results: Path, out_md: Path) -> None:
     gates = _load(results, "gates")
     deviations = _load(results, "deviations").get("deviations", [])
     primary = summary.get("primary", "n/a")
-    lines = ["# News sentiment signal — report", ""]
-    bar = summary.get("bar", {})
-    verdict = "clears" if bar.get("publish") else "does not clear"
-    lines += [f"**Primary model:** `{primary}`. The pre-registered publish bar: **{verdict}**.", ""]
-    lines += ["## Publish bar", ""]
-    lines += _table(
-        ["Condition", "Value", "Pass"],
-        [[k, v["value"], v["pass"]] for k, v in bar.get("conditions", {}).items()],
-    )
+    lines = ["# News sentiment signal — report", "", f"**Primary model:** `{primary}`.", ""]
+    lines += ["## Publish bar", ""] + _bar("The pre-registered publish bar", summary.get("bar", {}))
     lines += ["", "## Models, walk-forward 2013–2020 out of sample", ""]
     rows = []
-    for name in (primary, f"{primary}_null", "tfidf", "vader", "old_bug_vader"):
+    # dict.fromkeys keeps the order and drops the repeat when TF-IDF is the primary
+    for name in dict.fromkeys((primary, f"{primary}_null", "tfidf", "vader", "old_bug_vader")):
         overall = _load(results, name).get("overall")
         if overall:
             rows.append(
@@ -82,7 +82,7 @@ def build_report(results: Path, out_md: Path) -> None:
     lines += _table(["Run", "Days", "Mean IC", "IC t (NW)", "Net Sharpe", "Hit rate"], rows)
     lines += [
         "",
-        "`*_null` retrains on labels shuffled within each date and must show |t| < 2. "
+        "`*_null` retrains on labels permuted across all training rows and must show |t| < 2. "
         "`old_bug_vader` repeats the original repo's same-day join.",
         "",
         "## Robustness",
@@ -108,5 +108,14 @@ def build_report(results: Path, out_md: Path) -> None:
     )
     lines += ["", "## Deviations", ""]
     lines += [f"- {d}" for d in deviations] or ["None."]
+    if deviations:  # spec section 5: conditions 1-4 are also reported under the original protocol
+        original = _load(results, "summary_original").get("bar")
+        lines += [""] + (
+            _bar("Publish bar under the original protocol", original)
+            if original
+            else [
+                "Publish bar under the original protocol: not available (no summary was produced)."
+            ]
+        )
     lines += ["", "## Limitations", ""] + [f"- {item}" for item in LIMITATIONS] + [""]
     out_md.write_text("\n".join(lines))

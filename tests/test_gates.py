@@ -1,5 +1,9 @@
+from datetime import date
+
+import polars as pl
+
 from sentiment_signal import config
-from sentiment_signal.cli import _years_needed, g4_projection, offsets_follow_dst
+from sentiment_signal.cli import _years_needed, g4_projection, offsets_follow_dst, probe_days
 
 
 def _counts(value: int) -> dict[int, int]:
@@ -9,7 +13,9 @@ def _counts(value: int) -> dict[int, int]:
 def test_g4_passes_when_time_disk_and_ram_fit():
     out = g4_projection(_counts(10_000), _counts(20_000), rate=400.0, free_disk_gb=20.0, ram_gb=8.0)
     blocks = _years_needed()
-    assert out["headlines_to_embed"] == 10_000 * sum(len(ys) for ys in blocks.values())
+    total = 10_000 * sum(len(ys) for ys in blocks.values())
+    assert out["headlines_to_embed"] == total
+    assert out["cache_plus_models_gb"] == total * config.EMBED_DIM * 2 / 1e9 + 0.6 * len(blocks)
     assert out["largest_block_rows"] == 20_000 * 5
     assert out["projected_fit_ram_gb"] == 100_000 * config.EMBED_DIM * 6 / 1e9 + 1.0
     assert out["pass"] is True
@@ -24,7 +30,17 @@ def test_g4_fails_on_each_limit_separately():
     assert not g4_projection(**big, **ok_env)["pass"]
 
 
-def test_g1_offsets_must_follow_daylight_saving_or_be_utc():
-    assert offsets_follow_dst({"-04:00": 700, "-05:00": 500})
-    assert offsets_follow_dst({"+00:00": 1200})
-    assert not offsets_follow_dst({"-04:00": 1200})  # fixed summer offset all year
+def test_g1_offsets_must_follow_new_york_daylight_saving_or_be_utc():
+    def follows(*stamps: str) -> bool:
+        return offsets_follow_dst(pl.Series(stamps))[0]
+
+    assert follows("2020-01-15 10:00:00-05:00", "2020-07-15 10:00:00-04:00")
+    assert follows("2020-01-15 15:00:00+00:00", "2020-07-15 14:00:00+00:00")
+    assert not follows("2020-01-15 10:00:00-04:00", "2020-07-15 10:00:00-04:00")  # fixed offset
+    assert not follows("2020-01-15 10:00:00-04:00", "2020-07-15 10:00:00-05:00")  # flipped
+
+
+def test_g2_probe_days_are_weekdays_spread_over_the_whole_holdout():
+    days = probe_days(date(2022, 1, 1), date(2023, 12, 28), 6)
+    assert len(set(days)) == 6 and all(d.weekday() < 5 for d in days)
+    assert {d.year for d in days} == {2022, 2023}

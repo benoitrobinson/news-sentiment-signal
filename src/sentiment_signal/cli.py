@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +16,7 @@ from sentiment_signal import config
 from sentiment_signal.align import build_panel, build_panel_same_day
 from sentiment_signal.baseline import tfidf_featurize, vader_scores
 from sentiment_signal.data.news_av import collect_av_news, load_av_news
-from sentiment_signal.data.news_kaggle import load_kaggle_news, midnight_share
+from sentiment_signal.data.news_kaggle import TS_FORMAT, load_kaggle_news, midnight_share
 from sentiment_signal.data.prices import (
     build_returns,
     extract_prices,
@@ -48,6 +48,14 @@ def _read_json(path: Path) -> dict:
 
 
 def _record_gate(name: str, result: dict) -> None:
+    seen = sorted(
+        p.name for p in config.RESULTS.glob("*.json") if p.stem not in {"gates", "deviations"}
+    )
+    if seen:
+        raise SystemExit(
+            f"results exist ({', '.join(seen)}): gates are frozen once any result is seen "
+            "(spec section 6); record a deviation instead"
+        )
     gates = _read_json(config.RESULTS / "gates.json")
     gates[name] = {**result, "recorded_at": datetime.now(UTC).isoformat(timespec="seconds")}
     _write_json(config.RESULTS / "gates.json", gates)
@@ -59,10 +67,33 @@ def _calendar() -> pl.Series:
 
 
 def _primary() -> str:
-    g4 = _read_json(config.RESULTS / "gates.json").get("G4")
-    if g4 is None:
-        raise SystemExit("gate G4 has not been recorded; run `ss gate-g4` first (spec section 6)")
-    return "chrono" if g4["pass"] else "tfidf"
+    """The primary model as G4 decided it. Nothing is modelled until every gate is recorded and G1
+    and G2 pass (spec section 6: gates come before any modelling)."""
+    gates = _read_json(config.RESULTS / "gates.json")
+    missing = [g for g in ("G1", "G2ab", "G2c", "G4") if g not in gates]
+    if missing:
+        raise SystemExit(f"gates {missing} not recorded; run them first (spec section 6)")
+    failed = [g for g in ("G1", "G2ab", "G2c") if not gates[g]["pass"]]
+    if failed:
+        raise SystemExit(
+            f"gates {failed} failed; resolve them before any modelling (spec section 6)"
+        )
+    return "chrono" if gates["G4"]["pass"] else "tfidf"
+
+
+def _grid(model: str) -> tuple[dict, ...]:
+    return config.LOGIT_C_GRID if model == "chrono" else config.TFIDF_GRID
+
+
+def _require_clean_null(model: str) -> None:
+    null = _read_json(config.RESULTS / f"{model}_null.json").get("overall")
+    if null is None:
+        raise SystemExit(f"no null run: run `ss run --model {model} --null` first (spec section 5)")
+    if not abs(null["ic_t"]) < config.NULL_MAX_ABS_T:  # a NaN t fails too
+        raise SystemExit(
+            f"null IC t = {null['ic_t']}: the pipeline leaks; nothing is summarised or reported "
+            "until the leak is found (spec section 5)"
+        )
 
 
 def _kaggle_path(arg: str | None) -> Path:
@@ -73,24 +104,32 @@ def _kaggle_path(arg: str | None) -> Path:
     return Path(kagglehub.dataset_download(config.KAGGLE_DATASET)) / config.KAGGLE_FILE
 
 
-def offsets_follow_dst(offsets: dict[str, int]) -> bool:
-    """A single non-UTC offset all year means local times were stamped with a fixed offset, which
-    shifts winter (or summer) headlines by an hour across the 15:50 cut-off."""
-    return len(offsets) > 1 or set(offsets) <= {"+00:00", "+0000", "Z"}
+def offsets_follow_dst(stamps: pl.Series) -> tuple[bool, float]:
+    """(pass, share of stamps whose written clock time is New York wall time at the stamped
+    instant). A fixed offset all year, or offsets flipped against the season, moves headlines an
+    hour across the 15:50 cut-off; stamps that are all UTC are exact and pass."""
+    offsets = set(stamps.str.extract(r"([+-]\d{2}:?\d{2}|Z)$", 1).drop_nulls().unique())
+    frame = pl.DataFrame({"s": stamps}).select(
+        wall=pl.col("s")
+        .str.to_datetime(TS_FORMAT, strict=False)
+        .dt.convert_time_zone(config.TZ)
+        .dt.replace_time_zone(None),
+        written=pl.col("s").str.slice(0, 19).str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False),
+    )
+    frame = frame.drop_nulls()
+    agreement = float((frame["wall"] == frame["written"]).mean()) if frame.height else 0.0
+    all_utc = bool(offsets) and offsets <= {"+00:00", "+0000", "Z"}
+    return all_utc or agreement >= config.G1_MIN_DST_AGREEMENT, agreement
 
 
 def cmd_gate_g1(args: argparse.Namespace) -> None:
     path = _kaggle_path(args.file)
     print(pl.read_csv(path, n_rows=3, infer_schema=False))
     share = midnight_share(path, config.KAGGLE_TS_COL)
+    stamps = pl.scan_csv(path, infer_schema=False).select(config.KAGGLE_TS_COL).collect()
+    stamps = stamps[config.KAGGLE_TS_COL]
     offsets = dict(
-        pl.scan_csv(path, infer_schema=False)
-        .select(pl.col(config.KAGGLE_TS_COL).str.extract(r"([+-]\d{2}:?\d{2}|Z)$", 1).alias("o"))
-        .group_by("o")
-        .len()
-        .drop_nulls()
-        .collect()
-        .iter_rows()
+        stamps.str.extract(r"([+-]\d{2}:?\d{2}|Z)$", 1).drop_nulls().value_counts().iter_rows()
     )
     try:
         news = load_kaggle_news(
@@ -99,17 +138,18 @@ def cmd_gate_g1(args: argparse.Namespace) -> None:
         parse_ok, rows = True, news.height
     except ValueError as err:
         parse_ok, rows = False, str(err)
-    dst_ok = offsets_follow_dst(offsets)
+    dst_ok, dst_agreement = offsets_follow_dst(stamps)
     passed = args.licence_ok and parse_ok and share < config.G1_MAX_MIDNIGHT_SHARE and dst_ok
     _record_gate(
         "G1",
         {
-            "file": str(path),
+            "file": path.name,  # the full kagglehub path would publish the home directory
             "licence": args.licence,
             "licence_ok": args.licence_ok,
             "midnight_share": share,
             "utc_offset_parse_ok": parse_ok,
             "utc_offsets": offsets,
+            "new_york_wall_time_share": dst_agreement,
             "offsets_follow_dst": dst_ok,
             "rows": rows,
             "pass": passed,
@@ -192,9 +232,11 @@ def g4_projection(
 
 def cmd_gate_g4(args: argparse.Namespace) -> None:
     panel = pl.read_parquet(config.PROCESSED / "panel.parquet")
-    year_headlines = panel.filter(pl.col("signal_date").dt.year() == max(config.TEST_YEARS))[
-        "headline"
-    ].unique()
+    year_headlines = (
+        panel.filter(pl.col("signal_date").dt.year() == max(config.TEST_YEARS))["headline"]
+        .unique()
+        .sort()
+    )  # unique() order varies between runs; sorting makes the seeded sample fixed
     sample = year_headlines.sample(
         min(config.G4_BENCHMARK_HEADLINES, year_headlines.len()), seed=0
     ).to_list()
@@ -219,38 +261,62 @@ def cmd_gate_g4(args: argparse.Namespace) -> None:
     )
 
 
+def _av_span() -> tuple[datetime, datetime]:
+    """Collection span: a day either side of the holdout, so the first signal date gets the prior
+    afternoon's headlines and the last gets its own morning's."""
+    start, end = (datetime.fromisoformat(s) for s in (config.HOLDOUT_START, config.HOLDOUT_END))
+    return start - timedelta(days=1), end + timedelta(days=1)
+
+
+def probe_days(start: date, end: date, n: int) -> list[date]:
+    """n weekdays spread evenly over [start, end). News volume peaks on weekdays, so projecting
+    weekday request counts onto every calendar day is conservative."""
+    days = []
+    for i in range(n):
+        d = start + timedelta(days=i * (end - start).days // n)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        days.append(d)
+    return days
+
+
 def cmd_gate_g2(args: argparse.Namespace) -> None:
     key = os.environ["ALPHA_VANTAGE_KEY"]
-    start = datetime.fromisoformat(config.HOLDOUT_START)
+    first, last = (date.fromisoformat(s) for s in (config.HOLDOUT_START, config.HOLDOUT_END))
+    start, end = _av_span()
     probe = config.RAW / "av_probe"
-    windows = collect_av_news(start, start + timedelta(days=args.days), probe, key)
-    items = load_av_news(probe).height
-    files = len(list(probe.glob("*.json")))
-    splits = len(list(probe.glob("*.split")))  # each split window cost a request but wrote no file
-    holdout_days = (
-        datetime.fromisoformat(config.HOLDOUT_END) - datetime.fromisoformat(config.HOLDOUT_START)
-    ).days
-    projected_requests = (files + splits) / args.days * holdout_days
+    days = probe_days(first, last, args.days)
+    windows = 0
+    for d in days:
+        day = datetime.combine(d, datetime.min.time())
+        windows += collect_av_news(day, day + timedelta(days=1), probe, key)
+    years = set(load_av_news(probe)["ts"].dt.year().to_list())
+    stamps = {f"{d:%Y%m%d}" for d in days}
+    # every window of a probe day starts on that day; a split window cost a request, wrote no file
+    requests = sum(
+        1 for f in probe.iterdir() if f.suffix in {".json", ".split"} and f.name[:8] in stamps
+    )
+    projected_requests = requests / len(days) * (end - start).days
     collection_days = projected_requests / args.daily_limit
+    holdout_years = set(range(first.year, last.year + 1))
     _record_gate(
         "G2ab",
         {
-            "probe_days": args.days,
+            "probe_days": [str(d) for d in days],
             "windows_fetched": windows,
-            "relevant_rows": items,
+            "years_with_headlines": sorted(years),
             "projected_requests": projected_requests,
             "daily_limit": args.daily_limit,
             "projected_collection_days": collection_days,
             "timezone_assumed": config.AV_ASSUMED_TZ,
-            "pass": items > 0 and collection_days <= config.G2_MAX_COLLECTION_DAYS,
+            "pass": holdout_years <= years and collection_days <= config.G2_MAX_COLLECTION_DAYS,
         },
     )
 
 
 def cmd_collect_av(args: argparse.Namespace) -> None:
     fetched = collect_av_news(
-        datetime.fromisoformat(config.HOLDOUT_START),
-        datetime.fromisoformat(config.HOLDOUT_END),
+        *_av_span(),
         config.RAW / "av",
         os.environ["ALPHA_VANTAGE_KEY"],
         pause_seconds=args.pause,
@@ -329,6 +395,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def cmd_vader(args: argparse.Namespace) -> None:
+    _primary()
     for name, file in (("vader", "panel.parquet"), ("old_bug_vader", "panel_same_day.parquet")):
         panel = pl.read_parquet(config.PROCESSED / file).filter(
             pl.col("signal_date").dt.year().is_in(config.TEST_YEARS)
@@ -344,10 +411,21 @@ def cmd_vader(args: argparse.Namespace) -> None:
 
 
 def _best_config(model: str) -> dict:
-    validation = pl.DataFrame(_read_json(config.RESULTS / f"{model}.json")["validation"])
-    best = validation.group_by("config").agg(pl.col("mean_ic").mean()).sort("mean_ic").tail(1)
-    grid = config.LOGIT_C_GRID if model == "chrono" else config.TFIDF_GRID
-    return grid[best["config"].item()]
+    """Highest validation IC averaged over every walk-forward validation year; ties go to the
+    earlier config, as in walk_forward."""
+    run = _read_json(config.RESULTS / f"{model}.json")
+    if "validation" not in run:
+        raise SystemExit(f"run `ss run --model {model}` first")
+    ranked = (
+        pl.DataFrame(run["validation"])
+        .group_by("config")
+        .agg(pl.col("mean_ic").mean())
+        .filter(pl.col("mean_ic").is_finite())
+        .sort(["mean_ic", "config"], descending=[True, False])
+    )
+    if ranked.is_empty():
+        raise SystemExit(f"no {model} config has a finite mean validation IC")
+    return _grid(model)[ranked["config"][0]]
 
 
 def cmd_holdout(args: argparse.Namespace) -> None:
@@ -385,12 +463,16 @@ def cmd_holdout(args: argparse.Namespace) -> None:
 
 def cmd_summarize(args: argparse.Namespace) -> None:
     model, calendar = _primary(), _calendar()
+    _require_clean_null(model)
+    holdout = _read_json(config.RESULTS / "holdout.json")
+    if holdout.get("model") != model:
+        raise SystemExit(f"results/holdout.json is missing or not from {model}: run `ss holdout`")
     scores = pl.read_parquet(config.PROCESSED / f"{model}_scores.parquet")
     returns = pl.read_parquet(config.PROCESSED / "returns.parquet")
     primary = _read_json(config.RESULTS / f"{model}.json")["overall"]
     lag = lag_ic(scores, returns, calendar)
     mean_lag = float(lag["ic"].mean()) if lag.height else float("nan")
-    holdout_ic = _read_json(config.RESULTS / "holdout.json").get("mean_ic", float("nan"))
+    holdout_ic = holdout["mean_ic"]
     net = long_short(scores)["net"].to_numpy()
     validation = pl.read_parquet(config.PROCESSED / f"{model}_validation_returns.parquet")
     per_config = validation.group_by("config").agg(
@@ -405,7 +487,7 @@ def cmd_summarize(args: argparse.Namespace) -> None:
             ),
             "mean_lag_ic": mean_lag,
             "deflated_sharpe": deflated_sharpe(
-                net, n_trials=per_config.height, sr_var=float(per_config["sr"].var(ddof=1))
+                net, n_trials=len(_grid(model)), sr_var=float(per_config["sr"].var(ddof=1))
             ),
             "terciles": by_tercile(scores),
             "event_study": event_study(scores, returns, calendar).to_dicts(),
@@ -417,6 +499,9 @@ def cmd_summarize(args: argparse.Namespace) -> None:
 def cmd_report(args: argparse.Namespace) -> None:
     from sentiment_signal.report import build_report
 
+    _require_clean_null(_primary())
+    if not (config.RESULTS / "summary.json").exists():
+        raise SystemExit("run `ss summarize` first")
     build_report(config.RESULTS, Path("REPORT.md"))
     print("wrote REPORT.md")
 
@@ -439,7 +524,7 @@ def main() -> None:
         func=cmd_gate_g4
     )
     g2 = sub.add_parser("gate-g2", help="5. Alpha Vantage probe (needs ALPHA_VANTAGE_KEY)")
-    g2.add_argument("--days", type=int, default=3)
+    g2.add_argument("--days", type=int, default=6, help="weekdays sampled across the holdout")
     g2.add_argument("--daily-limit", type=int, required=True, help="requests/day for your key")
     g2.set_defaults(func=cmd_gate_g2)
     c = sub.add_parser("collect-av", help="6. collect the holdout news (resumable)")
@@ -450,7 +535,7 @@ def main() -> None:
     )
     r = sub.add_parser("run", help="8. walk-forward run of a model")
     r.add_argument("--model", choices=["chrono", "tfidf"], required=True)
-    r.add_argument("--null", action="store_true", help="labels shuffled within each date")
+    r.add_argument("--null", action="store_true", help="labels permuted across all training rows")
     r.set_defaults(func=cmd_run)
     sub.add_parser("vader", help="9. VADER baseline and old-bug demo").set_defaults(func=cmd_vader)
     sub.add_parser("holdout", help="10. frozen primary on the holdout").set_defaults(
