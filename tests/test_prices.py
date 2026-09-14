@@ -93,7 +93,7 @@ def test_bad_ticks_leave_no_next_day_return():
     adj[12] = adj[13] = -50.0  # negative on consecutive days: the ratio alone would look normal
     adj[15] = 0.2  # a placeholder tick between normal days
     adj[19] = 450.0  # beyond 4x up, then beyond 4x down
-    adj[22] = 390.0  # 3.9x up and back: large, but inside the band, so kept
+    adj[22] = 400.0  # exactly 4x up and back: the band is closed, so both returns are kept
     prices = _prices([("A", d, 10.0, a, v) for d, a, v in zip(DAYS, adj, vol, strict=True)])
     cal = trading_calendar(prices, min_tickers=1)
     out = build_returns(prices, cal, universe_size=1, window=3, splice_dates=(DAYS[7],))

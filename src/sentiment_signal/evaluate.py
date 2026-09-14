@@ -22,8 +22,14 @@ def daily_ic(
     return (
         scores.drop_nulls(["score", ret_col])
         .group_by("signal_date")
-        .agg(ic=pl.corr("score", ret_col, method="spearman"), n=pl.len())
-        .filter((pl.col("n") >= min_names) & pl.col("ic").is_not_nan())
+        .agg(
+            ic=pl.corr("score", ret_col, method="spearman"),
+            n=pl.len(),
+            spread=pl.col("score").n_unique(),
+        )
+        # all-equal scores rank nothing, yet polars can return a finite correlation for them
+        .filter((pl.col("n") >= min_names) & (pl.col("spread") > 1) & pl.col("ic").is_not_nan())
+        .drop("spread")
         .sort("signal_date")
     )
 

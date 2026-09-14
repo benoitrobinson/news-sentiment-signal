@@ -43,7 +43,8 @@ def test_daily_ic_perfect_reversed_and_min_names():
     perfect = _scores(D0, up, [float(x) for x in up])
     reversed_ = _scores(D1, up, [float(-x) for x in up])
     small = _scores(date(2020, 1, 6), [1.0, 2.0], [1.0, 2.0])
-    ic = daily_ic(pl.concat([perfect, reversed_, small]), min_names=20)
+    flat = _scores(date(2020, 1, 7), [0.5] * 49, list(range(49)))  # polars gives 0.0, not NaN
+    ic = daily_ic(pl.concat([perfect, reversed_, small, flat]), min_names=20)
     assert ic["signal_date"].to_list() == [D0, D1]
     assert ic["ic"].to_list() == pytest.approx([1.0, -1.0])
 
@@ -162,5 +163,9 @@ def test_tied_scores_do_not_trade_a_fixed_alphabetical_basket():
         .agg(pl.col("ticker").sort())
     )
     assert longs["ticker"].n_unique() > 50  # the long leg is drawn afresh among the ties each day
-    flat = tied.with_columns(score=pl.lit(0.5))
-    assert long_short(flat, min_names=20).height == 0  # no ranking at all: no trade, as no IC
+    flat_day = days[0]
+    mixed = tied.with_columns(
+        score=pl.when(pl.col("signal_date") == flat_day).then(0.5).otherwise(pl.col("score"))
+    )
+    traded = long_short(mixed, min_names=20)["signal_date"].to_list()
+    assert flat_day not in traded and len(traded) == len(days) - 1  # no ranking: no trade, no IC
