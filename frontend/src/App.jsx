@@ -5,7 +5,7 @@ import { Deviations, Gates, Robustness } from './Robustness.jsx'
 import { useResults } from './results.js'
 
 const QUESTION =
-  'Does the text of a news headline predict a stock’s next-day return relative to the market, ' +
+  "Does the text of a news headline predict a stock's next-day return relative to the market, " +
   'once every source of lookahead is removed?'
 
 export default function App() {
@@ -20,7 +20,7 @@ export default function App() {
     <main className="page">
       {import.meta.env.MODE === 'demo' ? (
         <p className="demo-banner">
-          Demo mode — every number below is synthetic, from <span className="mono">frontend/fixtures/</span>.
+          Demo mode: every number below is synthetic, from <span className="mono">frontend/fixtures/</span>.
           Run <span className="mono">npm run dev</span> to read the real{' '}
           <span className="mono">results/</span>.
         </p>

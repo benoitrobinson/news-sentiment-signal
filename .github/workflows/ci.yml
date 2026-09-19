@@ -12,6 +12,22 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest -q
 
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # demo mode generates its own fixtures, so the page is built against data in the shapes
+      # the pipeline writes even on a checkout that has no results/
+      - run: npm run build:demo
+        working-directory: frontend
+
   secrets:
     runs-on: ubuntu-latest
     steps:

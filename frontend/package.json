@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "demo": "vite --mode demo",
+    "demo": "node make-fixtures.mjs && vite --mode demo",
     "build": "vite build",
-    "build:demo": "vite build --mode demo",
+    "build:demo": "node make-fixtures.mjs && vite build --mode demo",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -64,7 +64,7 @@ def build_report(results: Path, out_md: Path) -> None:
     gates = _load(results, "gates")
     deviations = _load(results, "deviations").get("deviations", [])
     primary = summary.get("primary", "n/a")
-    lines = ["# News sentiment signal — report", "", f"**Primary model:** `{primary}`.", ""]
+    lines = ["# News sentiment signal: report", "", f"**Primary model:** `{primary}`.", ""]
     lines += ["## Publish bar", ""] + _bar("The pre-registered publish bar", summary.get("bar", {}))
     lines += ["", "## Models, walk-forward 2013–2020 out of sample", ""]
     rows = []

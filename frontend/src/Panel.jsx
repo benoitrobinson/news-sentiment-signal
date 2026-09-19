@@ -3,7 +3,7 @@ export function Panel({ title, sub, hint, children }) {
     <section className="panel">
       <h2 className="panel-title">
         {title}
-        {sub ? <span className="panel-sub"> — {sub}</span> : null}
+        {sub ? <span className="panel-sub"> · {sub}</span> : null}
       </h2>
       {hint ? <p className="panel-hint">{hint}</p> : null}
       {children}
@@ -15,7 +15,7 @@ export function Panel({ title, sub, hint, children }) {
 export function NotRun({ command }) {
   return (
     <p className="not-run">
-      Not run yet — <code>{command}</code>
+      Not run yet: <code>{command}</code>
     </p>
   )
 }

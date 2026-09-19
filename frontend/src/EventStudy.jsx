@@ -44,7 +44,7 @@ function TooltipBody({ active, payload, label }) {
   return (
     <div className="tooltip">
       <div className="tooltip-head">
-        {label === 0 ? 'day 0 — first tradable return' : `day ${label}`}
+        {label === 0 ? 'day 0: first tradable return' : `day ${label}`}
       </div>
       {payload
         .slice()

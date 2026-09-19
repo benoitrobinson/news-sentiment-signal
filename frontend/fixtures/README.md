@@ -1,9 +1,10 @@
-Synthetic stand-ins for `results/*.json`, in the exact shapes `evaluate.py` and `cli.py`
-write. They exist so the page can be built and reviewed before the pipeline has run.
+Synthetic stand-ins for `results/*.json`, in the exact shapes `evaluate.py` and `cli.py` write,
+so the page can be built and reviewed before the pipeline has run.
 
-**No number in here is a measurement.** Regenerate with `node make-fixtures.mjs`.
-`npm run demo` serves this directory and shows a banner saying so; `npm run dev` reads
-the real `results/`.
+**No number they contain is a measurement.** They are generated, not committed: `npm run demo`
+writes them and serves this directory behind a banner saying so, and every generated file carries
+a `_synthetic` marker. `npm run dev` reads the real `results/`.
 
-Demo data must never be written into `results/`: `cli.py _require_gates_open()` freezes
-every gate once any `results/*.json` other than `gates.json` and `deviations.json` exists.
+Demo data must never be written into `results/`: `cli.py _require_gates_open()` freezes every gate
+once any `results/*.json` other than `gates.json` and `deviations.json` exists, which would block
+G2c and, with it, the whole pipeline.

@@ -85,7 +85,7 @@ NULL_MAX_ABS_T = 2.0  # a null run at or above this |IC t| means the pipeline le
 # Gates (spec section 6)
 G1_MAX_MIDNIGHT_SHARE = 0.05
 G1_MIN_DST_AGREEMENT = 0.99  # share of stamps written in New York wall time
-G2_MAX_COLLECTION_DAYS = 90  # [A6] free key, 25 requests/day: Benoit chose to wait (2026-09-14)
+G2_MAX_COLLECTION_DAYS = 90  # [A6] the free key allows 25 requests/day; waiting it out is allowed
 G2_MIN_HOLDOUT_DAYS = 100
 G4_MAX_EMBED_HOURS = 12.0
 G4_DISK_HEADROOM_GB = 5.0

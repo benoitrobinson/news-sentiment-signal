@@ -2,7 +2,28 @@
 
 Does the text of a news headline predict a stock's next-day return relative to the market, once every
 source of lookahead is removed? This repo answers that with a protocol fixed before any result was seen.
-The findings are in [`REPORT.md`](REPORT.md).
+
+## Status
+
+**The protocol is frozen and the results are not in yet.** The code is complete, the gates that come
+before any modelling are recorded in [`results/gates.json`](results/gates.json), and the holdout news
+is still being collected: the Alpha Vantage free key allows 25 requests a day against a two-year
+holdout, so collection runs for about a month before the primary model is fit.
+
+That order is the point rather than an accident. Whether the signal clears the bar was decided by
+four conditions written down before any of them could be measured, and this README will carry
+whichever answer comes back:
+
+| Condition | Threshold |
+|---|---|
+| Daily rank IC t-stat (Newey-West) | >= 2 |
+| Quintile long-short net Sharpe, after 10 bps | >= 0.5 |
+| Mean IC one day later | <= half the mean IC |
+| Holdout mean IC, different news source | > 0 |
+
+A label-permutation null halts the pipeline before anything is summarised or reported: if scores
+learned from shuffled labels reach \|t\| >= 2, the run leaks and nothing is published until the leak is
+found. `REPORT.md` and the numbers behind it appear here when `ss report` has run.
 
 ## Design in one paragraph
 
