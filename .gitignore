@@ -3,6 +3,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .hypothesis/
+.DS_Store
 .env
+.env.*
+!.env.example
 /data/
+/.superpowers/
 results/*.parquet

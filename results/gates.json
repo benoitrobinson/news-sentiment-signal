@@ -1,0 +1,51 @@
+{
+  "G1": {
+    "file": "analyst_ratings_processed.csv",
+    "licence": "CC0: Public Domain",
+    "licence_ok": true,
+    "midnight_share": 0.0004574107691647965,
+    "utc_offset_parse_ok": true,
+    "utc_offsets": {
+      "-04:00": 908656,
+      "-05:00": 490524
+    },
+    "new_york_wall_time_share": 1.0,
+    "offsets_follow_dst": true,
+    "rows": 1396287,
+    "pass": true,
+    "recorded_at": "2026-09-14T12:24:57+00:00"
+  },
+  "G4": {
+    "headlines_per_second": 103.46253001148563,
+    "headlines_to_embed": 1489576,
+    "projected_hours": 3.9992363521864136,
+    "cache_plus_models_gb": 7.687988735999999,
+    "free_disk_gb": 16.419786752,
+    "largest_block_rows": 279946,
+    "projected_fit_ram_gb": 2.2899911680000002,
+    "ram_gb": 8.589934592,
+    "pass": true,
+    "recorded_at": "2026-09-14T12:27:26+00:00"
+  },
+  "G2ab": {
+    "probe_days": [
+      "2022-01-03",
+      "2022-05-27",
+      "2022-10-19",
+      "2023-03-14",
+      "2023-08-04",
+      "2023-12-28"
+    ],
+    "windows_fetched": 1,
+    "years_with_headlines": [
+      2022,
+      2023
+    ],
+    "projected_requests": 728.0,
+    "daily_limit": 25,
+    "projected_collection_days": 29.12,
+    "timezone_assumed": "America/New_York",
+    "pass": true,
+    "recorded_at": "2026-09-14T14:17:04+00:00"
+  }
+}
