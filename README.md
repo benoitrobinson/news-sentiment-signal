@@ -26,3 +26,16 @@ uv run pytest                          # no network, no model download
 
 Data (not redistributed): Kaggle *Daily Financial News for 6000+ Stocks*, Alpha Vantage `NEWS_SENTIMENT`,
 FNSPID daily prices (Dong et al., 2024). Models: `manelalab/chrono-bert-v1-*` (MIT).
+
+## Page
+
+`frontend/` renders `results/*.json` as one page: the publish bar, the event study, the model
+table, the gates. No backend and no network, so it also doubles as a status board while the
+pipeline runs, naming the command behind each stage that has not produced its file yet.
+
+```sh
+cd frontend && npm install
+npm run dev     # reads ../results
+npm run demo    # synthetic fixtures, for working on the page before the pipeline has run
+npm run build   # static dist/, base './' so it serves from a subpath
+```

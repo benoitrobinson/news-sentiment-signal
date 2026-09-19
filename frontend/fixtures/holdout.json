@@ -1,0 +1,8 @@
+{
+  "model": "chrono",
+  "params": {
+    "C": 0.1
+  },
+  "days": 486,
+  "mean_ic": 0.0089
+}

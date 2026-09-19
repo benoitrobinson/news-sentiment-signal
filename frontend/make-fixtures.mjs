@@ -1,0 +1,74 @@
+// Synthetic results in the exact shapes evaluate.py / cli.py write, so the page can be
+// built and reviewed before the pipeline has run. Nothing here is a measurement.
+// Run: node make-fixtures.mjs
+import { writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const out = (name, value) =>
+  writeFileSync(resolve(import.meta.dirname, 'fixtures', `${name}.json`), JSON.stringify(value, null, 2) + '\n')
+
+const overall = (days, mean_ic, ic_t, net_sharpe, extra = {}) => ({
+  days,
+  mean_ic,
+  ic_t,
+  net_sharpe,
+  gross_sharpe: net_sharpe + 0.4,
+  mean_turnover: 1.74,
+  ...extra,
+})
+
+// Event study: a spread that opens on day 0 and holds, the shape a real signal would make.
+const eventStudy = []
+for (const q of [1, 2, 3, 4, 5]) {
+  const perDay = [0, (q - 3) * 7.5e-4, (q - 3) * 1.5e-4, (q - 3) * 0.4e-4, 0, 0, 0]
+  let cum = 0
+  ;[-1, 0, 1, 2, 3, 4, 5].forEach((offset, i) => {
+    cum += perDay[i]
+    eventStudy.push({ q, offset, mean_r: perDay[i], cum_r: cum })
+  })
+}
+
+out('summary', {
+  primary: 'chrono',
+  bar: {
+    conditions: {
+      '1_ic_t_ge_2': { value: 3.12, pass: true },
+      '2_net_sharpe_ge_0_5': { value: 0.68, pass: true },
+      '3_lag_ic_le_half': { value: 0.0021, pass: true },
+      '4_holdout_ic_gt_0': { value: 0.0089, pass: true },
+    },
+    publish: true,
+  },
+  mean_lag_ic: 0.0021,
+  deflated_sharpe: 0.87,
+  terciles: [
+    { tercile: 0, ...overall(1794, 0.0071, 2.1, 0.44) },
+    { tercile: 1, ...overall(1801, 0.0095, 2.8, 0.61) },
+    { tercile: 2, ...overall(1803, 0.0131, 3.4, 0.79) },
+  ],
+  event_study: eventStudy,
+})
+
+out('gates', {
+  G1: { pass: true, recorded_at: '2026-09-14T12:24:57+00:00' },
+  G4: { pass: true, recorded_at: '2026-09-14T12:27:26+00:00' },
+  G2ab: { pass: true, recorded_at: '2026-09-14T14:17:04+00:00' },
+  G2c: { pass: true, recorded_at: '2026-10-18T09:02:11+00:00' },
+})
+
+out('deviations', { deviations: [] })
+out('holdout', { model: 'chrono', params: { C: 0.1 }, days: 486, mean_ic: 0.0089 })
+
+out('chrono', {
+  overall: overall(1806, 0.0104, 3.12, 0.68),
+  by_year: [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020].map((y, i) => ({
+    test_year: y,
+    ...overall(226 - i, 0.013 - i * 0.0008, 2.4 - i * 0.12, 0.8 - i * 0.05),
+  })),
+})
+out('chrono_null', { overall: overall(1806, -0.0002, -0.31, -0.04) })
+out('tfidf', { overall: overall(1806, 0.0048, 1.44, 0.21) })
+out('vader', { overall: overall(1791, 0.0016, 0.52, 0.06, { hit_rate: 0.503 }) })
+out('old_bug_vader', { overall: overall(1798, 0.0417, 12.9, 2.41, { hit_rate: 0.581 }) })
+
+console.log('wrote frontend/fixtures/*.json (synthetic)')

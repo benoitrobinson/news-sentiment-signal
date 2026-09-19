@@ -1,0 +1,300 @@
+/* Tokens carried over from the stock_sentiment_analyzer dashboard. */
+:root {
+  --bg: #080c10;
+  --surface: #0d1117;
+  --surface2: #131b24;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #e8edf2;
+  --text-muted: #6b7f96;
+  --text-dim: #3d5068;
+
+  /* chart chrome */
+  --grid: #1c2733;
+  --axis: #2f3f52;
+
+  /* status: always beside a word, never carrying meaning alone */
+  --pass: #0ca30c;
+  --fail: #d03b3b;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 3rem 16px 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.demo-banner {
+  margin: 0;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #fab219;
+  border-radius: var(--r-sm);
+  background: rgba(250, 178, 25, 0.08);
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.masthead h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
+}
+
+.question {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: var(--text);
+  max-width: 62ch;
+}
+
+.meta,
+.panel-hint,
+.stat-note {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 1.25rem;
+  min-width: 0; /* a wide table scrolls itself instead of stretching the grid item */
+  overflow-wrap: break-word;
+}
+
+.panel-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.panel-sub {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.panel-hint {
+  margin-bottom: 0.875rem;
+  max-width: 68ch;
+}
+
+.headline {
+  margin: 0.75rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.headline--pass {
+  color: var(--pass);
+}
+
+.headline--fail {
+  color: var(--text);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* Tables ------------------------------------------------------------------ */
+/* A narrow screen scrolls the table, never the page. */
+.table-scroll {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 380px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.table td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 0;
+}
+
+/* Status ------------------------------------------------------------------ */
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+.verdict-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.verdict--pass {
+  color: var(--pass);
+}
+
+.verdict--fail {
+  color: var(--fail);
+}
+
+.verdict--none {
+  color: var(--text-dim);
+}
+
+.not-run {
+  margin: 0.75rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.not-run code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.1rem 0.4rem;
+  color: var(--text);
+}
+
+/* Stats ------------------------------------------------------------------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin: 0.75rem 0 0;
+}
+
+.stats dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats .stat-note {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.list {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+}
+
+/* Chart ------------------------------------------------------------------- */
+.tooltip {
+  background: var(--surface2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.625rem;
+  font-size: 0.75rem;
+}
+
+.tooltip-head {
+  color: var(--text-muted);
+  margin-bottom: 0.375rem;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tooltip-name {
+  flex: 1;
+}
+
+.tooltip-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.table-view {
+  margin-top: 0.75rem;
+}
+
+.table-view summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.recharts-legend-item-text {
+  color: var(--text-muted) !important;
+}
+
+/* Footer ------------------------------------------------------------------ */
+.footer {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.footer a {
+  color: var(--text);
+}

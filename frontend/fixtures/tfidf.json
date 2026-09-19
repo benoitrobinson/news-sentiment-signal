@@ -1,0 +1,10 @@
+{
+  "overall": {
+    "days": 1806,
+    "mean_ic": 0.0048,
+    "ic_t": 1.44,
+    "net_sharpe": 0.21,
+    "gross_sharpe": 0.61,
+    "mean_turnover": 1.74
+  }
+}

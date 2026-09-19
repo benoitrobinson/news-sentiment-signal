@@ -1,0 +1,11 @@
+{
+  "overall": {
+    "days": 1798,
+    "mean_ic": 0.0417,
+    "ic_t": 12.9,
+    "net_sharpe": 2.41,
+    "gross_sharpe": 2.81,
+    "mean_turnover": 1.74,
+    "hit_rate": 0.581
+  }
+}
